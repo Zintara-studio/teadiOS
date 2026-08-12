@@ -1,0 +1,8 @@
+{
+  "name": "teadios",
+  "private": true,
+  "workspaces": ["worker"],
+  "scripts": {
+    "test": "npm test --workspace worker"
+  }
+}

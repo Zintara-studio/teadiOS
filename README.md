@@ -29,7 +29,7 @@ the list of things that go wrong. [`DEPLOY.md`](DEPLOY.md) is how to stand it up
 | Worker | Node 22+ and TypeScript, **run directly** | Node strips types natively now, so there is no bundler and no build step in the container. |
 | DB driver | `pg` | A long-lived process holding real transactions. The HTTP driver is for serverless. |
 | Rendering | `@remotion/bundler`, `@remotion/renderer` | |
-| Artifacts | `@aws-sdk/client-s3` → Cloudflare R2 | R2 is S3-compatible and charges nothing for egress, which matters when the output is video. |
+| Artifacts | `aws4fetch` → Cloudflare R2 | R2 is S3-compatible and charges nothing for egress, which matters when the output is video. `aws4fetch` is a few KB against the AWS SDK's tens of MB, and it is the same signer the upload Worker needs — one signing library in the repo, not two. |
 | Uploads | One Cloudflare Worker | R2 has no row-level security, so *something* must mint presigned URLs. It holds only the R2 key and delegates authorization back to Postgres using the caller's own JWT — so there is still exactly one authorization model. |
 | Monorepo | npm workspaces | Already in npm. |
 
@@ -58,6 +58,28 @@ read identities, two workers never take the same job, and a worker that lost its
 claim cannot overwrite the one that has it. Change a policy, re-run it, and also
 break one invariant on purpose to confirm the suite still goes red — a green
 suite proves nothing on its own.
+
+## Running the worker tests
+
+Same throwaway Postgres. The worker connects as `teadio_w1`, the same narrow
+role it uses in production, so the column grants and policies are exercised
+rather than discovered later.
+
+```bash
+npm install
+npm test
+```
+
+Fifteen tests, all against a fake agent (`worker/test/fake-agent.mjs`) rather
+than real rendering: claiming, heartbeats, stale reclaim, fenced writes,
+cancellation, shutdown mid-render, refusing an agent that reports success
+without producing a video, failing a run that could not upload, and keeping
+credentials out of the browser-readable event feed.
+
+The same warning applies. These were checked by breaking eight invariants one at
+a time — removing artifact verification, marking a job complete before the
+upload, disabling the ownership watcher, letting the sanitiser pass everything
+through — and confirming each turns the suite red.
 
 ## Licence
 
