@@ -1,0 +1,17 @@
+node_modules/
+dist/
+build/
+*.tsbuildlog
+
+# Every one of these is a credential. See .env.example for what goes in them.
+.env
+.env.*
+!.env.example
+
+# Per-run scratch. Nothing shared lives at a fixed path (see system-design.md §6).
+worker/runs/
+worker/.remotion/
+*.log
+
+.DS_Store
+.vercel
