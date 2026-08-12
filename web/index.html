@@ -1,0 +1,729 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teadiOS — a render farm made of the laptops you already own</title>
+<meta name="description" content="Open-source Remotion render farm. Put the queue in Postgres, a container on every team laptop, and the finished file on your CDN.">
+
+<style>
+  /* Thermal palette: cold is a laptop doing nothing, warm is a laptop earning
+     its keep. The lane chart below is the only place the warm end is spent. */
+  :root {
+    --ground:  #131A24;
+    --panel:   #19212D;
+    --line:    #27303E;
+    --paper:   #EDF1F6;
+    --steel:   #7C93AD;
+    --warm:    #FF9A3C;
+    --ember:   #FF5E3A;
+
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono",
+            "DejaVu Sans Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+            "Helvetica Neue", Arial, sans-serif;
+
+    --gutter: clamp(20px, 5vw, 64px);
+    --maxw: 1140px;
+    --labelw: 132px;
+  }
+
+  @media (max-width: 560px) {
+    :root { --labelw: 92px; }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--paper);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gutter); }
+
+  a { color: inherit; }
+  a:focus-visible, button:focus-visible {
+    outline: 2px solid var(--warm);
+    outline-offset: 3px;
+  }
+
+  /* Every machine-generated value on this page is set in mono — hostnames,
+     timecodes, stages, commands. Prose is never mono. The distinction is the
+     page's main structural device. */
+  .m {
+    font-family: var(--mono);
+    font-size: 0.82em;
+    letter-spacing: 0.02em;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--steel);
+    margin: 0 0 20px;
+  }
+
+  /* ---------------------------------------------------------------- header */
+
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .brand {
+    font-weight: 800;
+    font-size: 19px;
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+  .brand span { color: var(--warm); }
+
+  .top nav {
+    display: flex;
+    gap: 26px;
+    font-size: 14px;
+  }
+  .top nav a {
+    color: var(--steel);
+    text-decoration: none;
+    transition: color .15s;
+  }
+  .top nav a:hover { color: var(--paper); }
+
+  /* ------------------------------------------------------------------ hero */
+
+  .hero { padding: clamp(56px, 9vw, 104px) 0 clamp(40px, 6vw, 72px); }
+
+  .hero h1 {
+    font-size: clamp(38px, 6.6vw, 74px);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    font-weight: 800;
+    margin: 0 0 26px;
+    max-width: 15ch;
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--steel);
+    display: block;
+  }
+
+  .lede {
+    font-size: clamp(17px, 2vw, 21px);
+    color: #C2CEDC;
+    max-width: 56ch;
+    margin: 0 0 38px;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .btn {
+    display: inline-block;
+    padding: 13px 22px;
+    border-radius: 3px;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    border: 1px solid transparent;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .btn-primary { background: var(--ember); color: #1A0C06; }
+  .btn-primary:hover { background: #FF7554; }
+  .btn-ghost { border-color: var(--line); color: var(--paper); }
+  .btn-ghost:hover { border-color: var(--steel); }
+
+  .then {
+    margin: 34px 0 0;
+    font-size: 14px;
+    color: var(--steel);
+  }
+
+  .cmd {
+    display: flex;
+    align-items: stretch;
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--panel);
+    max-width: 660px;
+    overflow: hidden;
+  }
+  .cmd code {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 13px 16px;
+    overflow-x: auto;
+    white-space: nowrap;
+    flex: 1;
+    color: #D7E1EC;
+  }
+  .cmd code b { color: var(--warm); font-weight: 400; }
+  .cmd button {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: none;
+    border: none;
+    border-left: 1px solid var(--line);
+    color: var(--steel);
+    padding: 0 18px;
+    cursor: pointer;
+    transition: color .15s, background .15s;
+  }
+  .cmd button:hover { color: var(--paper); background: #202A38; }
+
+  /* ------------------------------------------------------- the lane chart */
+
+  .fleet { border-top: 1px solid var(--line); padding: clamp(44px, 6vw, 76px) 0; }
+
+  .fleet-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 30px;
+  }
+  .fleet-head h2 {
+    font-size: clamp(22px, 3vw, 30px);
+    letter-spacing: -0.025em;
+    font-weight: 700;
+    margin: 0;
+    max-width: 22ch;
+  }
+
+  .toggle {
+    display: inline-flex;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .toggle button {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: none;
+    border: none;
+    color: var(--steel);
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+    white-space: nowrap;
+  }
+  .toggle button + button { border-left: 1px solid var(--line); }
+  .toggle button:hover { color: var(--paper); }
+  .toggle button[aria-pressed="true"] { background: var(--warm); color: #1A0C06; }
+
+  .chart {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--panel);
+    padding: 20px clamp(14px, 2.4vw, 26px) 8px;
+  }
+
+  .ruler {
+    display: flex;
+    margin-left: var(--labelw);
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 6px;
+    margin-bottom: 14px;
+  }
+  .ruler span {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #57697F;
+    border-left: 1px solid var(--line);
+    padding-left: 6px;
+  }
+  .ruler span:first-child { border-left: none; padding-left: 0; }
+
+  .lane {
+    display: flex;
+    align-items: center;
+    height: 34px;
+  }
+  .lane-name {
+    width: var(--labelw);
+    flex-shrink: 0;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--steel);
+    padding-right: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lane.idle .lane-name { color: #46566B; }
+
+  .track {
+    position: relative;
+    flex: 1;
+    height: 16px;
+    border-radius: 2px;
+    /* A dormant lane reads as cold hatching: capacity you are already paying
+       for and not using. */
+    background: repeating-linear-gradient(
+      -45deg, #1E2733 0 5px, #19212D 5px 10px);
+  }
+
+  .bar {
+    position: absolute;
+    top: 0;
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(180deg, var(--warm), #E97C22);
+    /* Wiped in with clip-path rather than scaled — scaling would stretch the
+       job name inside it for the length of the transition. */
+    clip-path: inset(0 100% 0 0);
+    transition: clip-path .5s cubic-bezier(.2, .7, .3, 1);
+    overflow: hidden;
+  }
+  .bar b {
+    position: absolute;
+    inset: 0;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: #2A1405;
+    padding: 0 6px;
+    line-height: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .chart.go .bar { clip-path: inset(0 0 0 0); }
+
+  .readout {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px 22px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+  }
+  .clock {
+    font-family: var(--mono);
+    font-size: clamp(30px, 5vw, 44px);
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    color: var(--warm);
+    font-variant-numeric: tabular-nums;
+  }
+  .readout dl {
+    display: flex;
+    gap: 22px;
+    margin: 0;
+    flex-wrap: wrap;
+  }
+  .readout dt {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #57697F;
+  }
+  .readout dd {
+    font-family: var(--mono);
+    font-size: 14px;
+    margin: 2px 0 0;
+    color: var(--paper);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .note {
+    font-size: 14px;
+    color: var(--steel);
+    margin: 18px 0 0;
+    max-width: 62ch;
+  }
+
+  /* ---------------------------------------------------------------- stages */
+
+  .band { border-top: 1px solid var(--line); padding: clamp(44px, 6vw, 76px) 0; }
+  .band h2 {
+    font-size: clamp(22px, 3vw, 30px);
+    letter-spacing: -0.025em;
+    font-weight: 700;
+    margin: 0 0 34px;
+    max-width: 24ch;
+  }
+
+  .stages { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+  @media (min-width: 780px) { .stages { grid-template-columns: repeat(3, 1fr); } }
+
+  .stage { background: var(--panel); padding: 26px 24px 30px; }
+  .stage-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--warm);
+    margin: 0 0 14px;
+  }
+  .stage h3 {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    margin: 0 0 10px;
+  }
+  .stage p { margin: 0; font-size: 15px; color: #B3C1D1; }
+
+  /* ------------------------------------------------------------- failures */
+
+  .rows { border-top: 1px solid var(--line); }
+  .row {
+    display: grid;
+    gap: 6px 40px;
+    padding: 22px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  @media (min-width: 780px) { .row { grid-template-columns: 260px 1fr; } }
+
+  .row dt {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--warm);
+  }
+  .row dd { margin: 0; font-size: 15px; color: #B3C1D1; }
+
+  /* ---------------------------------------------------------------- limits */
+
+  .limits { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; max-width: 68ch; }
+  .limits li {
+    padding-left: 26px;
+    position: relative;
+    font-size: 15px;
+    color: #B3C1D1;
+  }
+  .limits li::before {
+    content: "—";
+    position: absolute;
+    left: 0;
+    color: var(--steel);
+    font-family: var(--mono);
+  }
+  .limits b { color: var(--paper); font-weight: 600; }
+
+  /* ---------------------------------------------------------------- footer */
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 34px 0 60px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 30px;
+    justify-content: space-between;
+    font-size: 14px;
+    color: var(--steel);
+  }
+  footer a { color: var(--steel); }
+  footer a:hover { color: var(--paper); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bar { transition: none; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="/">teadi<span>OS</span></a>
+    <nav>
+      <a href="https://github.com/imajij/teadiOS/blob/main/system-design.md">Design</a>
+      <a href="https://github.com/imajij/teadiOS/blob/main/DEPLOY.md">Deploy</a>
+      <a href="https://github.com/imajij/teadiOS">GitHub</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <p class="eyebrow">Self-hosted render farm for Remotion</p>
+    <h1>Your team already owns a render farm.<em>It's just asleep.</em></h1>
+    <p class="lede">
+      A Remotion render pins one machine for an hour while four other laptops sit
+      at three percent. teadiOS puts the queue in Postgres, a container on every
+      laptop, and the finished file on your CDN.
+    </p>
+
+    <div class="actions">
+      <a class="btn btn-primary" href="https://github.com/imajij/teadiOS/blob/main/DEPLOY.md">Deploy the console</a>
+      <a class="btn btn-ghost" href="https://github.com/imajij/teadiOS">Read the source</a>
+    </div>
+
+    <p class="then">Then, on every laptop someone is willing to lend:</p>
+    <div class="cmd">
+      <code>docker run -d --env-file .env <b>teadios/worker</b></code>
+      <button type="button" data-copy="docker run -d --env-file .env teadios/worker">Copy</button>
+    </div>
+  </section>
+</div>
+
+<div class="wrap">
+  <section class="fleet">
+    <div class="fleet-head">
+      <h2>The same ten renders, on one machine and on four.</h2>
+      <div class="toggle" role="group" aria-label="Fleet size">
+        <button type="button" data-mode="solo" aria-pressed="false">One laptop</button>
+        <button type="button" data-mode="fleet" aria-pressed="true">Four laptops, five slots</button>
+      </div>
+    </div>
+
+    <div class="chart" id="chart">
+      <div class="ruler" id="ruler"></div>
+      <div id="lanes"></div>
+
+      <div class="readout">
+        <div class="clock" id="clock">00:00</div>
+        <dl>
+          <div><dt>Wall clock</dt><dd id="r-wall">—</dd></div>
+          <div><dt>Machine time</dt><dd id="r-cpu">—</dd></div>
+          <div><dt>Idle capacity</dt><dd id="r-idle">—</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <p class="note">
+      Same jobs, same total machine time, same electricity. The only thing that
+      changed is how many laptops were awake to take a turn.
+    </p>
+  </section>
+</div>
+
+<div class="wrap">
+  <section class="band">
+    <h2>Three stages, and then you stop thinking about it.</h2>
+    <div class="stages">
+      <div class="stage">
+        <p class="stage-tag">stage · deploy</p>
+        <h3>Put the console up</h3>
+        <p>
+          A static site on Vercel pointed at a Postgres database. There is no
+          server and no database password in it — the browser talks straight to
+          Postgres, and row-level security decides what it may see.
+        </p>
+      </div>
+      <div class="stage">
+        <p class="stage-tag">stage · enlist</p>
+        <h3>Lend a laptop</h3>
+        <p>
+          One container per machine. It registers itself, sends a heartbeat, and
+          only takes work when the laptop is plugged in and has disk to spare.
+          Close the lid whenever you like.
+        </p>
+      </div>
+      <div class="stage">
+        <p class="stage-tag">stage · submit</p>
+        <h3>Hand it a brief</h3>
+        <p>
+          Anyone on the team submits from the browser. The next free laptop takes
+          it, streams its log back live, and pushes the finished file to your CDN
+          before it calls the job done.
+        </p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="wrap">
+  <section class="band">
+    <h2>What happens when someone closes their laptop mid-render.</h2>
+    <dl class="rows">
+      <div class="row">
+        <dt>lid closes at frame 4,000</dt>
+        <dd>
+          The heartbeat lapses, another machine picks the job up from the stage it
+          reached rather than from zero, and the first laptop is fenced out of
+          writing when it eventually wakes up. Both would otherwise bill.
+        </dd>
+      </div>
+      <div class="row">
+        <dt>two laptops, one job</dt>
+        <dd>
+          Cannot happen. Work is claimed with <span class="m">SELECT … FOR UPDATE
+          SKIP LOCKED</span>, so Postgres itself is the load balancer. There is no
+          broker to run and nothing else to page you at 3am.
+        </dd>
+      </div>
+      <div class="row">
+        <dt>render finished, upload failed</dt>
+        <dd>
+          That is a failed job, not a finished one. The database refuses to mark a
+          run complete without a file on your CDN — a video that exists only on
+          the laptop that made it is the thing this exists to prevent.
+        </dd>
+      </div>
+      <div class="row">
+        <dt>everyone went home</dt>
+        <dd>
+          The console says so, in words. A queued job with no fleet online looks
+          exactly like healthy progress otherwise, and will sit there all weekend.
+        </dd>
+      </div>
+      <div class="row">
+        <dt>someone hits cancel</dt>
+        <dd>
+          The browser can only mark the row. It cannot signal a process on a
+          colleague's machine, so the worker watches its own row and stops itself.
+        </dd>
+      </div>
+    </dl>
+  </section>
+</div>
+
+<div class="wrap">
+  <section class="band">
+    <h2>Where it won't help.</h2>
+    <ul class="limits">
+      <li><b>You work alone.</b> One laptop is one lane. There is nothing to spread across, and you will just have added a database.</li>
+      <li><b>Your renders take seconds.</b> Workers poll every two seconds. If the job is shorter than the poll, the poll is the job.</li>
+      <li><b>You need a deadline you can promise.</b> These are people's laptops. They close them, they board flights, they run out of disk.</li>
+      <li><b>Remotion is not MIT-licensed.</b> It is free for individuals and small companies and paid above that. Check where your team lands before you point it at one.</li>
+    </ul>
+  </section>
+</div>
+
+<div class="wrap">
+  <footer>
+    <span>teadiOS — built from <a href="https://github.com/imajij/teadiOS/blob/main/system-design.md">system-design.md</a></span>
+    <span><a href="https://github.com/imajij/teadiOS">github.com/imajij/teadiOS</a></span>
+  </footer>
+</div>
+
+<script>
+  // Ten real-ish render jobs, in minutes. Both modes run exactly these.
+  const JOBS = [
+    ['launch-teaser',    6.5], ['q3-recap',        5.2],
+    ['pricing-explain',  4.8], ['changelog-042',   4.5],
+    ['onboarding-01',    4.1], ['case-study-acme', 3.9],
+    ['release-notes',    3.6], ['social-cut-9x16', 3.2],
+    ['demo-loop',        2.9], ['title-card',      2.6],
+  ];
+
+  // Both modes draw all five slots. In solo mode four of them stay cold, which
+  // is the argument: that capacity is already bought and already idle.
+  const LANES = ['mira-mbp.slot0', 'mira-mbp.slot1', 'jonas-mbp.slot0',
+                 'studio-imac.slot0', 'rk-thinkpad.slot0'];
+  const AWAKE = { solo: 1, fleet: 5 };
+
+  // Fixed axis across both modes — rescaling per mode would hide the whole point.
+  const AXIS = 44;
+  const SPEED = 2200 / AXIS;   // ms of animation per rendered minute
+
+  const clock = (m) => {
+    const s = Math.round(m * 60);
+    return String(Math.floor(s / 60)).padStart(2, '0') + ':' +
+           String(s % 60).padStart(2, '0');
+  };
+
+  // Longest job first, onto whichever awake slot frees up next. That is what
+  // the claim query does, near enough.
+  function pack(awake) {
+    const lanes = LANES.map((name, i) => ({ name, at: 0, bars: [], awake: i < awake }));
+    const pool = lanes.filter((l) => l.awake);
+    for (const [slug, mins] of [...JOBS].sort((a, b) => b[1] - a[1])) {
+      const lane = pool.reduce((a, b) => (b.at < a.at ? b : a));
+      lane.bars.push({ slug, mins, start: lane.at });
+      lane.at += mins;
+    }
+    return lanes;
+  }
+
+  const ruler = document.getElementById('ruler');
+  const lanesEl = document.getElementById('lanes');
+  const chart = document.getElementById('chart');
+  const clockEl = document.getElementById('clock');
+  const buttons = [...document.querySelectorAll('.toggle button')];
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  for (let t = 0; t < AXIS; t += 11) {
+    const s = document.createElement('span');
+    s.textContent = clock(t);
+    ruler.append(s);
+  }
+
+  let ticker;
+
+  function render(mode) {
+    const lanes = pack(AWAKE[mode]);
+    const makespan = Math.max(...lanes.map((l) => l.at));
+    const total = JOBS.reduce((n, j) => n + j[1], 0);
+    // Idle capacity counts every slot the team owns, not just the awake ones.
+    const capacity = makespan * LANES.length;
+
+    lanesEl.innerHTML = '';
+    for (const lane of lanes) {
+      const row = document.createElement('div');
+      row.className = 'lane' + (lane.bars.length ? '' : ' idle');
+      row.innerHTML = '<div class="lane-name">' + lane.name + '</div>';
+
+      const track = document.createElement('div');
+      track.className = 'track';
+      for (const bar of lane.bars) {
+        const el = document.createElement('div');
+        el.className = 'bar';
+        el.style.left = (bar.start / AXIS * 100) + '%';
+        el.style.width = (bar.mins / AXIS * 100) + '%';
+        el.style.transitionDelay = (reduced ? 0 : bar.start * SPEED) + 'ms';
+        el.innerHTML = '<b>' + bar.slug + '</b>';
+        track.append(el);
+      }
+      row.append(track);
+      lanesEl.append(row);
+    }
+
+    document.getElementById('r-wall').textContent = clock(makespan);
+    document.getElementById('r-cpu').textContent = clock(total);
+    document.getElementById('r-idle').textContent =
+      Math.round((1 - total / capacity) * 100) + '%';
+
+    // Run the clock up alongside the bars so the number and the picture agree.
+    clearInterval(ticker);
+    chart.classList.remove('go');
+    if (reduced) {
+      chart.classList.add('go');
+      clockEl.textContent = clock(makespan);
+      return;
+    }
+    clockEl.textContent = clock(0);
+    requestAnimationFrame(() => requestAnimationFrame(() => chart.classList.add('go')));
+
+    const started = performance.now();
+    const runtime = makespan * SPEED + 500;
+    ticker = setInterval(() => {
+      const p = Math.min(1, (performance.now() - started) / runtime);
+      clockEl.textContent = clock(makespan * p);
+      if (p === 1) clearInterval(ticker);
+    }, 40);
+  }
+
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    buttons.forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+    render(b.dataset.mode);
+  }));
+
+  document.querySelector('[data-copy]').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    try {
+      await navigator.clipboard.writeText(btn.dataset.copy);
+      btn.textContent = 'Copied';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1600);
+    } catch {
+      btn.textContent = 'Press ⌘C';
+    }
+  });
+
+  render('fleet');
+</script>

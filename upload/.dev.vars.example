@@ -1,0 +1,18 @@
+# The one small server: it mints presigned R2 upload URLs, because R2 has no
+# row-level security and something has to decide who may write.
+#
+# Copy to upload/.dev.vars for local wrangler; in production use
+# `npx wrangler secret put <NAME>`.
+#
+# Note what is NOT here: a database credential. The Worker verifies the caller's
+# Clerk token, then re-asks Postgres "may this token see this project?" using the
+# caller's own JWT. So it never gets a second opinion about who may upload, and
+# there is still exactly one authorization model in the system.
+
+CLERK_JWKS_URL=https://example.clerk.accounts.dev/.well-known/jwks.json
+NEON_DATA_API_URL=https://ep-example.apirest.us-east-2.aws.neon.tech/neondb/rest/v1
+
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET=teadio-artifacts
