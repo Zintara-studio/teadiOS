@@ -29,7 +29,7 @@ stateDiagram-v2
     claimed --> running: worker starts Remotion or the agent
     running --> completed: artifact verified and uploaded to R2
     running --> pending: heartbeat went stale, another laptop resumes from the last stage
-    running --> failed: error recorded
+    running --> failed: error recorded, or stale 3 times
     pending --> cancelled
     claimed --> cancelled
     running --> cancelled: the worker watches its own row and stops
