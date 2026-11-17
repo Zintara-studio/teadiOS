@@ -8,6 +8,8 @@ at three percent. teadiOS puts the queue in Postgres, a container on every
 laptop, and the finished file on your CDN. Anyone on the team submits from the
 browser; the next free machine takes it.
 
+![teadiOS architecture: a static console, Postgres as the queue and the only authorization layer, worker containers on team laptops, finished videos in Cloudflare R2](docs/architecture.svg)
+
 Two kinds of job share one queue:
 
 - **`render`** — build a composition the team already wrote, at given props.
@@ -16,6 +18,29 @@ Two kinds of job share one queue:
 
 [`system-design.md`](system-design.md) is the architecture and, more usefully,
 the list of things that go wrong. [`DEPLOY.md`](DEPLOY.md) is how to stand it up.
+
+## A job's life
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> pending: submitted from the console
+    pending --> claimed: a free laptop claims it (SKIP LOCKED)
+    claimed --> running: worker starts Remotion or the agent
+    running --> completed: artifact verified and uploaded to R2
+    running --> pending: heartbeat went stale, another laptop resumes from the last stage
+    running --> failed: error recorded
+    pending --> cancelled
+    claimed --> cancelled
+    running --> cancelled: the worker watches its own row and stops
+    completed --> [*]
+    failed --> [*]
+    cancelled --> [*]
+```
+
+Two workers can never hold the same job, and every write a worker makes carries
+"and I still own this job", so a laptop that wakes up late cannot overwrite the
+one that took over.
 
 ## The stack, and why each piece
 
